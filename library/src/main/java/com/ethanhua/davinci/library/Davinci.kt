@@ -4,7 +4,10 @@ import android.annotation.SuppressLint
 import android.arch.lifecycle.LifecycleOwner
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.view.View
 import kotlinx.coroutines.*
+import kotlinx.coroutines.Dispatchers.Main
 
 /**
  * 图片加载类，采用Kotlin协程代替传统java线程池的并发操作，资源利用更轻量，代码可读性更友好
@@ -58,15 +61,16 @@ object Davinci {
     private fun getFromDiskCacheActual(key: Key): Bitmap? {
         val bitmap = mDiskLruCache.get(key)
         bitmap?.let {
-            mMemoryLruCache.put(key, it)
+            mMemoryLruCache.put(key.getSafeKey(), it)
         }
         return bitmap
     }
 
     private fun getFromNetWorkActual(key: Key): Bitmap? {
-        val bitmap = DefaultImageHttpRequest().loadImage(key.url)
+        val bitmapStream = DefaultImageHttpRequest().load(key.url)
+        val bitmap =  BitmapFactory.decodeStream(bitmapStream)
         bitmap?.apply {
-            mMemoryLruCache.put(key, bitmap)
+            mMemoryLruCache.put(key.getSafeKey(), bitmap)
             GlobalScope.launch {
                 mDiskLruCache.put(key, bitmap)
             }
@@ -75,7 +79,7 @@ object Davinci {
     }
 
     private fun getFromMemoryCache(key: Key): Bitmap? {
-        return mMemoryLruCache[key]
+        return mMemoryLruCache.get(key.getSafeKey())
     }
 
     private suspend fun getFromDiskCache(
@@ -107,12 +111,17 @@ object Davinci {
         mContext = context.applicationContext
     }
 
-    fun load(context: Context, url: String): Bitmap? {
-        if (context is LifecycleOwner) {
-            context.lifecycle.addObserver(mLifecycleObserver)
-        }
-        return runBlocking {
-            loadImageActual(context, Key(url))
+    suspend fun load(context: Context, url: String, view: View?): Deferred<Bitmap?> {
+        return GlobalScope.async(Main) {
+            if (context is LifecycleOwner) {
+                context.lifecycle.addObserver(mLifecycleObserver)
+            }
+            var key = Key(url)
+            view?.apply {
+                val size = getSize(this).await()
+                key = Key(url, size.first, size.second)
+            }
+            loadImageActual(context, key)
         }
     }
 

@@ -29,12 +29,6 @@ class DefaultImageHttpRequest :IImageHttpRequest {
         }
     }
 
-    fun loadImage(url: String): Bitmap? {
-       return load(url)?.let {
-           BitmapFactory.decodeStream(it)
-       }
-    }
-
     private fun buildDefaultHeaders():Map<String,String>{
        return mapOf()
     }

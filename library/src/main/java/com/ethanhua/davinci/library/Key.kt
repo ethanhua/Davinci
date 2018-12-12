@@ -7,9 +7,11 @@ package com.ethanhua.davinci.library
  * @version 0.1
  * @since 2018/12/5
  */
-data class Key(val url: String) {
+const val ORIGIN_SIZE = -1
 
-    fun getSafeKey():String{
+data class Key(val url: String, val width: Int = ORIGIN_SIZE, val height: Int = ORIGIN_SIZE) {
+
+    fun getSafeKey(): String {
         return hashCode().toString()
     }
 

@@ -12,11 +12,11 @@ import java.io.File
  */
 interface IMemoryCache {
 
-    fun get(key: Key): Bitmap?
+    fun get(key: String): Bitmap?
 
-    fun put(key: Key, resource: Bitmap): Bitmap?
+    fun put(key: String, resource: Bitmap): Bitmap?
 
-    fun remove(key: Key): Bitmap?
+    fun remove(key: String): Bitmap?
 
     fun clear()
 
