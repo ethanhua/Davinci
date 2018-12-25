@@ -1,7 +1,5 @@
 package com.ethanhua.davinci.library
 
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URL

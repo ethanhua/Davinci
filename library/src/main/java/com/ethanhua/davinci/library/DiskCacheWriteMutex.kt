@@ -1,40 +1,38 @@
 package com.ethanhua.davinci.library
 
-import android.support.v4.util.Preconditions
+import kotlinx.coroutines.sync.Mutex
 import java.util.*
-import java.util.concurrent.locks.Lock
-import java.util.concurrent.locks.ReentrantLock
 
 
 /**
- * 类描述
+ * 磁盘缓存写入互斥量
  *
  * @author ethanhua
  * @version 0.1
  * @since 2018/12/10
  */
-class DiskCacheWriteLocker {
-    private val locks = HashMap<String,WriteLock>()
-    private val writeLockPool = WriteLockPool()
+class DiskCacheWriteMutex {
+    private val mutexes = HashMap<String,WriteMutex>()
+    private val writeLockPool = WriteMutexPool()
 
-    fun acquire(safeKey: String) {
-        var writeLock: WriteLock?
+    fun acquire(safeKey: String): Mutex {
+        var writeMutex: WriteMutex?
         synchronized(this) {
-            writeLock = locks[safeKey]
-            if (writeLock == null) {
-                writeLock = writeLockPool.obtain()
-                locks[safeKey] = writeLock!!
+            writeMutex = mutexes[safeKey]
+            if (writeMutex == null) {
+                writeMutex = writeLockPool.obtain()
+                mutexes[safeKey] = writeMutex!!
             }
-            writeLock!!.interestedThreads++
+            writeMutex!!.interestedThreads++
         }
-        writeLock!!.lock.lock()
+        return writeMutex!!.lock
     }
 
     fun release(safeKey: String) {
-        var writeLock: WriteLock?
+        var writeMutex: WriteMutex?
         synchronized(this) {
-            writeLock = locks[safeKey]
-            writeLock?.apply {
+            writeMutex = mutexes[safeKey]
+            writeMutex?.apply {
                 if (interestedThreads < 1) {
                     throw IllegalStateException(
                         "Cannot release a lock that is not held"
@@ -44,11 +42,11 @@ class DiskCacheWriteLocker {
                 }
                 interestedThreads--
                 if (interestedThreads == 0) {
-                    val removed = locks.remove(safeKey)
-                    if (removed != writeLock) {
+                    val removed = mutexes.remove(safeKey)
+                    if (removed != writeMutex) {
                         throw IllegalStateException(
                             ("Removed the wrong lock"
-                                    + ", expected to remove: " + writeLock
+                                    + ", expected to remove: " + writeMutex
                                     + ", but actually removed: " + removed
                                     + ", safeKey: " + safeKey)
                         )
@@ -59,33 +57,33 @@ class DiskCacheWriteLocker {
                 }
             }
         }
-        writeLock?.lock?.unlock()
+        writeMutex?.lock?.unlock()
     }
 
-    private class WriteLock {
-        val lock: Lock = ReentrantLock()
+    private class WriteMutex {
+        val lock: Mutex = Mutex()
         var interestedThreads: Int = 0
     }
 
-    private class WriteLockPool {
-        private val pool = ArrayDeque<WriteLock>()
+    private class WriteMutexPool {
+        private val pool = ArrayDeque<WriteMutex>()
         private val MAX_POOL_SIZE = 10
 
-        fun obtain(): WriteLock {
-            var result: WriteLock?
+        fun obtain(): WriteMutex {
+            var result: WriteMutex?
             synchronized(pool) {
                 result = pool.poll()
             }
             if (result == null) {
-                result = WriteLock()
+                result = WriteMutex()
             }
-            return result as WriteLock
+            return result as WriteMutex
         }
 
-        fun offer(writeLock: WriteLock) {
+        fun offer(writeMutex: WriteMutex) {
             synchronized(pool) {
                 if (pool.size < MAX_POOL_SIZE) {
-                    pool.offer(writeLock)
+                    pool.offer(writeMutex)
                 }
             }
         }

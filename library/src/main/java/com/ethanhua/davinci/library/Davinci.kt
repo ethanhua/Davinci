@@ -8,6 +8,8 @@ import android.graphics.BitmapFactory
 import android.view.View
 import kotlinx.coroutines.*
 import kotlinx.coroutines.Dispatchers.Main
+import java.util.*
+import kotlin.coroutines.coroutineContext
 
 /**
  * 图片加载类，采用Kotlin协程代替传统java线程池的并发操作，资源利用更轻量，代码可读性更友好
@@ -41,12 +43,10 @@ object Davinci {
         DiskLruCacheWrapper(getCacheFile(mContext, File_CACHE_NAME))
     }
 
-    private suspend fun loadImageActual(context: Context, key: Key): Bitmap? {
+    private suspend fun loadImageActual(key: Key): Bitmap? {
         return getFromMemoryCache(key) ?:
-               with(getParentJob(context)) {
-                   getFromDiskCache(this, key) ?:
-                   getFromNetWork(this, key)
-        }
+            getFromDiskCache(key) ?:
+            getFromNetWork(key)
     }
 
     private fun getParentJob(context: Context): Job {
@@ -71,9 +71,7 @@ object Davinci {
         val bitmap =  BitmapFactory.decodeStream(bitmapStream)
         bitmap?.apply {
             mMemoryLruCache.put(key.getSafeKey(), bitmap)
-            GlobalScope.launch {
-                mDiskLruCache.put(key, bitmap)
-            }
+            mDiskLruCache.put(key, bitmap)
         }
         return bitmap
     }
@@ -83,22 +81,20 @@ object Davinci {
     }
 
     private suspend fun getFromDiskCache(
-        parentJob: Job,
         key: Key
-    ): Bitmap? = getFromCacheAsync(parentJob, key, ::getFromDiskCacheActual)
+    ): Bitmap? = getFromCacheAsync(key, ::getFromDiskCacheActual)
 
     private suspend fun getFromNetWork(
-        parentJob: Job,
         key: Key
-    ): Bitmap? = getFromCacheAsync(parentJob, key, ::getFromNetWorkActual)
+    ): Bitmap? = getFromCacheAsync(key, ::getFromNetWorkActual)
 
     private suspend fun getFromCacheAsync(
-        parentJob: Job,
         key: Key,
         requestAction: (key: Key) -> Bitmap?
     ): Bitmap? {
         mSubAsyncJobs[key]?.cancel()
-        val loadingJob = GlobalScope.async(Dispatchers.IO + parentJob) {
+        // 使用父协程上下文启动新的协程，方便统一管理
+        val loadingJob = GlobalScope.async(coroutineContext + Dispatchers.Default) {
             requestAction(key)
         }
         mSubAsyncJobs[key] = loadingJob
@@ -112,7 +108,8 @@ object Davinci {
     }
 
     suspend fun load(context: Context, url: String, view: View?): Deferred<Bitmap?> {
-        return GlobalScope.async(Main) {
+        // 每次启动协程使用context相关的父协程作为上下文参数传入
+        return GlobalScope.async(Main + getParentJob(context)) {
             if (context is LifecycleOwner) {
                 context.lifecycle.addObserver(mLifecycleObserver)
             }
@@ -121,7 +118,7 @@ object Davinci {
                 val size = getSize(this).await()
                 key = Key(url, size.first, size.second)
             }
-            loadImageActual(context, key)
+            loadImageActual(key)
         }
     }
 
